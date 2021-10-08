@@ -16,8 +16,8 @@ namespace ModBusTCP_terminal {
 
       while (true) {
         // Modbus TCP frame format = MBAP Header + PDU (Modbus Application Header + Protocol Data Unit)
-        Console.WriteLine("Введите запрос для ведомого устройства");
-        Console.WriteLine("Формат такой же как ModBus RTU, но без контрольной суммы, т.е. {MbAddr} {CmdCode} {AddrH} {AddrL} {QntH} {QntL}");
+        Console.WriteLine("Введите запрос для ведомого устройства в формате");
+        Console.WriteLine("{MbAddr} {CmdCode} {AddrH} {AddrL} {QntH} {QntL}");
         string MBAP = "0001 0000 0006";
         // 0001 - Идентификатор транзакции	Transaction Identifier
         // 0000 - Идентификатор протокола	Protocol Identifier
@@ -44,15 +44,14 @@ namespace ModBusTCP_terminal {
 
         TcpClient client = new TcpClient(server, port);
 
-        // Translate the passed message into ASCII and store it as a Byte array.
+        // Переводим полученное сообщение в массив байт
         Byte[] data = Enumerable.Range(0, message.Length)
           .Where(x => x % 2 == 0)
           .Select(x => Convert.ToByte(message.Substring(x, 2), 16))
           .ToArray();
 
         // Get a client stream for reading and writing.
-        //  Stream stream = client.GetStream();
-
+  
         NetworkStream stream = client.GetStream();
 
         // Send the message to the connected TcpServer.
@@ -63,18 +62,32 @@ namespace ModBusTCP_terminal {
         // Receive the TcpServer.response.
 
         // Buffer to store the response bytes.
-        data = new Byte[20];
+		// Так как заголовок ответа содержит конкретное число байт, а число байт в ответе соотносится с тем что запрашивается, то можно попробовать динамически посчитать буфер, но при условии что в ответе будут приходить данные в формате int16 а не int32 или float
+		// Для начала узнаем сколько регистров запрашивается. По структуре это у нас последняя цифра из полученных данных
 
-        // String to store the response ASCII representation.
-        //String responseData = String.Empty;
-
+		Console.WriteLine("Количество регистров запрошено: {0}", data[data.Length-1].ToString());
+		// Длина заголовка обычно 9 байт + количество регистров * 2, т.к. int16 одно слово из двух байт
+		int dataSize = data[data.Length-1] * 2;
+		int arrSize = dataSize + 9;
+		// создаем массив соответствующей длины 
+        Byte[] dataReceived = new Byte[arrSize];
+		
         // Read the first batch of the TcpServer response bytes.
-        Int32 bytes = stream.Read(data, 0, data.Length);
-        StringBuilder hex = new StringBuilder(data.Length * 2);
-        foreach(byte b in data)
-        hex.AppendFormat("{0:x2}", b);
-
+        Int32 bytes = stream.Read(dataReceived, 0, dataReceived.Length);
+		// Преобразуем byte array to hex string и выводим в консоль
+        StringBuilder hex = new StringBuilder(dataReceived.Length * 2);
+        foreach(byte b in dataReceived)
+				hex.AppendFormat("{0:x2}", b);		
         Console.WriteLine("Received: {0}", hex.ToString());
+		
+		// парсим и выводим в консоль входящие значения регистров
+		for (int i = 0; i < dataSize; i+=2) {
+			Byte[] Register = new Byte[2];
+			Array.Copy(dataReceived, 9+i, Register, 0, 2);
+			Array.Reverse(Register);
+			Console.WriteLine("Register {0} : {1}", i/2,BitConverter.ToInt16(Register, 0));
+		}		
+		
 
         // Close everything.
         //stream.Close();
